@@ -130,3 +130,8 @@ st.line_chart(chart_df)
 
 # Highlight best
 styled = chart_df.style.apply(
+    lambda row: ['background-color: #C6EFCE' if row.name == best_range else '' for _ in row],
+    axis=1
+)
+
+st.dataframe(styled)
