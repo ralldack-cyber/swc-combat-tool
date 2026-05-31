@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 st.set_page_config(page_title="SWC Combat Optimiser", layout="wide")
 
-# -------------------------
-# FULL WEAPON DATA
-# -------------------------
+# -----------------------------------
+# WEAPON DATA
+# -----------------------------------
 weapons = {
     "A280": (9,5,13,4,14,3,15,55),
     "A295": (7,3,11,2,12,1,13,5),
@@ -16,13 +15,9 @@ weapons = {
     "Bryar Pistol": (2,2,2,1,3,0,4,5),
     "Bryar Rifle": (3,3,3,2,4,1,5,6.5),
     "DC-15A": (9,5,13,4,14,3,15,19),
-    "DC-15S": (3,0,6,0,7,0,8,10.5),
-    "DL-18": (2,2,2,1,3,0,4,8),
     "DL-44": (2,2,2,1,3,0,4,10.5),
     "DLT-20a": (4,0,8,0,9,0,10,8.5),
     "E-11": (5,1,9,0,10,0,11,6),
-    "E-11B": (5,1,9,0,10,0,11,8.5),
-    "EE-3": (4,0,8,0,9,0,10,5),
     "HB-5": (5,1,9,0,10,0,11,9),
     "Nightstinger": (13,10,16,9,17,8,18,67),
     "Valken-38": (6,2,10,1,11,0,12,7),
@@ -31,18 +26,16 @@ weapons = {
 
 ranges = list(range(20))
 
-# -------------------------
+# -----------------------------------
 # CURVE FUNCTION
-# -------------------------
+# -----------------------------------
 def curve(opt,r75l,r75h,r50l,r50h,r25l,r25h):
     vals=[]
     for r in ranges:
         if r==opt:
-            vals.append(100)
-            continue
+            vals.append(100); continue
         if r<r25l or r>r25h:
-            vals.append(0)
-            continue
+            vals.append(0); continue
 
         if r75l<=r<=r75h:
             if r<opt:
@@ -65,73 +58,156 @@ def curve(opt,r75l,r75h,r50l,r50h,r25l,r25h):
         vals.append(val)
     return vals
 
-# -------------------------
-# BUILD EXPECTED TABLE
-# -------------------------
+# -----------------------------------
+# BUILD EXPECTED DAMAGE TABLE
+# -----------------------------------
 exp_data = {}
 for w,(opt,r75l,r75h,r50l,r50h,r25l,r25h,avg) in weapons.items():
-    hit = curve(opt,r75l,r75h,r50l,r50h,r25l,r25h)
-    exp = [h/100 * avg for h in hit]
-    exp_data[w] = exp
+    vals = curve(opt,r75l,r75h,r50l,r50h,r25l,r25h)
+    exp_data[w] = [v/100 * avg for v in vals]
 
 exp_df = pd.DataFrame(exp_data, index=ranges)
 
-# -------------------------
+# -----------------------------------
 # UI
-# -------------------------
+# -----------------------------------
 st.title("⚔️ SWC Combat Optimiser")
 
-col1, col2 = st.columns(2)
+tab1, tab2 = st.tabs(["⚙️ Setup", "📊 Results"])
 
-# YOUR SQUAD
-with col1:
-    st.header("Your Squad")
-    your_weapon = st.selectbox("Weapon (applied to all 12)", list(weapons.keys()))
+# -----------------------------------
+# SETUP
+# -----------------------------------
+with tab1:
 
-# ENEMY SQUAD
-with col2:
-    st.header("Enemy Squad (Primary / Secondary / Tertiary)")
+    col1, col2 = st.columns(2)
 
-enemy_slots = []
-for i in range(12):
-    c1,c2,c3 = st.columns(3)
-    w1 = c1.selectbox("Primary", [""] + list(weapons.keys()), key=f"p{i}")
-    w2 = c2.selectbox("Secondary", [""] + list(weapons.keys()), key=f"s{i}")
-    w3 = c3.selectbox("Tertiary", [""] + list(weapons.keys()), key=f"t{i}")
-    enemy_slots.append([w1,w2,w3])
+    # YOUR SQUAD
+    with col1:
+        st.subheader("Your Squad")
+        your_weapon = st.selectbox("Weapon (12 units)", list(weapons.keys()))
 
-# -------------------------
-# CALCULATIONS
-# -------------------------
-your_total = exp_df[your_weapon] * 12
-enemy_total = pd.Series([0]*20, index=ranges)
+    # ENEMY SQUAD
+    with col2:
+        st.subheader("Enemy Squad Builder")
 
-for unit in enemy_slots:
-    for w in unit:
-        if w:
-            enemy_total += exp_df[w]
+        if "enemy" not in st.session_state:
+            st.session_state.enemy = [["","","",""] for _ in range(12)]
 
-net = your_total - enemy_total
+        # SETTINGS
+        st.markdown("### Combat Rules")
+        secondary_weight = st.slider("Secondary weapon effectiveness",
+                                     0.0, 1.0, 0.5)
 
-# -------------------------
+        st.caption("Primary weapons = 100%, Secondary scaled")
+
+        # PRESETS
+        st.markdown("### Presets")
+        p1,p2,p3,p4 = st.columns(4)
+
+        if p1.button("Snipers"):
+            st.session_state.enemy = [["X-45","","",""] for _ in range(12)]
+        if p2.button("Carbines"):
+            st.session_state.enemy = [["Valken-38","","",""] for _ in range(12)]
+        if p3.button("Mixed"):
+            st.session_state.enemy = [
+                ["X-45","","",""],
+                ["DLT-20a","","",""],
+                ["Valken-38","","",""]
+            ] * 4
+        if p4.button("Clear"):
+            st.session_state.enemy = [["","","",""] for _ in range(12)]
+
+        st.markdown("### Enemy Loadout")
+        st.caption("Each unit: 2 primary + 2 secondary weapons")
+
+        for i in range(12):
+
+            st.markdown(f"**Enemy Unit {i+1}**")
+
+            st.markdown("Primary Set")
+            p1, p2 = st.columns(2)
+            primary_1 = p1.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_1")
+            primary_2 = p2.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_2")
+
+            st.markdown("Secondary Set")
+            s1, s2 = st.columns(2)
+            secondary_1 = s1.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_1")
+            secondary_2 = s2.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_2")
+
+            st.session_state.enemy[i] = [
+                primary_1,
+                primary_2,
+                secondary_1,
+                secondary_2
+            ]
+
+# -----------------------------------
 # RESULTS
-# -------------------------
-best_range = int(net.idxmax())
+# -----------------------------------
+with tab2:
 
-st.markdown(f"# ✅ Optimal Range: **{best_range}**")
+    your_total = exp_df[your_weapon] * 12
+    enemy_total = pd.Series([0]*20, index=ranges)
 
-chart_df = pd.DataFrame({
-    "Your Damage": your_total,
-    "Enemy Damage": enemy_total,
-    "Net": net
-})
+    # -----------------------------------
+    # SMART WEAPON SELECTION
+    # -----------------------------------
+    for r in ranges:
 
-st.line_chart(chart_df)
+        total = 0
 
-# Highlight best
-styled = chart_df.style.apply(
-    lambda row: ['background-color: #C6EFCE' if row.name == best_range else '' for _ in row],
-    axis=1
-)
+        for unit in st.session_state.enemy:
 
-st.dataframe(styled)
+            best_primary = 0
+            best_secondary = 0
+
+            # PRIMARY (full strength)
+            for w in unit[:2]:
+                if w:
+                    val = exp_df.loc[r, w]
+                    best_primary = max(best_primary, val)
+
+            # SECONDARY (scaled)
+            for w in unit[2:]:
+                if w:
+                    val = exp_df.loc[r, w] * secondary_weight
+                    best_secondary = max(best_secondary, val)
+
+            total += best_primary + best_secondary
+
+        enemy_total[r] = total
+
+    net = your_total - enemy_total
+    best_range = int(net.idxmax())
+
+    # -----------------------------------
+    # OUTPUT
+    # -----------------------------------
+    st.markdown(f"# ✅ Optimal Range: **{best_range}**")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Your Peak", round(your_total.max(),1))
+    col2.metric("Enemy Peak", round(enemy_total.max(),1))
+    col3.metric("Best Advantage", round(net.max(),1))
+
+    chart_df = pd.DataFrame({
+        "Your Damage": your_total,
+        "Enemy Damage": enemy_total,
+        "Net Advantage": net
+    })
+
+    st.line_chart(chart_df)
+
+    # -----------------------------------
+    # TABLE STYLING
+    # -----------------------------------
+    def style_rows(row):
+        if row.name == best_range:
+            return ['background-color: #C6EFCE'] * len(row)
+        elif row["Net Advantage"] > 0:
+            return ['background-color: #E2F0D9'] * len(row)
+        else:
+            return ['background-color: #FCE4D6'] * len(row)
+
+    st.dataframe(chart_df.style.apply(style_rows, axis=1))
