@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 
@@ -102,3 +103,102 @@ with tab1:
             st.session_state.enemy = [["X-45","","",""] for _ in range(12)]
         if p2.button("Carbines"):
             st.session_state.enemy = [["Valken-38","","",""] for _ in range(12)]
+        if p3.button("Mixed"):
+            st.session_state.enemy = [
+                ["X-45","","",""],
+                ["DLT-20a","","",""],
+                ["Valken-38","","",""]
+            ] * 4
+        if p4.button("Clear"):
+            st.session_state.enemy = [["","","",""] for _ in range(12)]
+
+        st.markdown("### Enemy Loadout")
+        st.caption("Each unit: choose PRIMARY or SECONDARY set (both weapons fire)")
+
+        for i in range(12):
+
+            st.markdown(f"**Enemy Unit {i+1}**")
+
+            # PRIMARY
+            st.markdown("Primary Set")
+            p1_col, p2_col = st.columns(2)
+            primary_1 = p1_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_1")
+            primary_2 = p2_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_2")
+
+            # SECONDARY
+            st.markdown("Secondary Set")
+            s1_col, s2_col = st.columns(2)
+            secondary_1 = s1_col.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_1")
+            secondary_2 = s2_col.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_2")
+
+            st.session_state.enemy[i] = [
+                primary_1,
+                primary_2,
+                secondary_1,
+                secondary_2
+            ]
+
+# -----------------------------------
+# RESULTS TAB
+# -----------------------------------
+with tab2:
+
+    # ✅ ensure float calculations
+    your_total = (exp_df[your_weapon] * 12).astype(float)
+    enemy_total = pd.Series([0.0]*20, index=ranges)
+
+    # ✅ FINAL LOGIC (correct + fixed)
+    for r in ranges:
+
+        total = 0.0
+
+        for unit in st.session_state.enemy:
+
+            primary_output = 0.0
+            secondary_output = 0.0
+
+            # PRIMARY SET (sum both weapons)
+            for w in unit[:2]:
+                if w:
+                    primary_output += exp_df.loc[r, w]
+
+            # SECONDARY SET (sum both weapons)
+            for w in unit[2:]:
+                if w:
+                    secondary_output += exp_df.loc[r, w]
+
+            # ✅ choose best set
+            total += max(primary_output, secondary_output)
+
+        enemy_total[r] = total
+
+    net = your_total - enemy_total
+    best_range = int(net.idxmax())
+
+    # -----------------------------------
+    # OUTPUT
+    # -----------------------------------
+    st.markdown(f"# ✅ Optimal Range: **{best_range}**")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Your Peak", round(your_total.max(),1))
+    col2.metric("Enemy Peak", round(enemy_total.max(),1))
+    col3.metric("Best Advantage", round(net.max(),1))
+
+    chart_df = pd.DataFrame({
+        "Your Damage": your_total,
+        "Enemy Damage": enemy_total,
+        "Net Advantage": net
+    })
+
+    st.line_chart(chart_df)
+
+    def style_rows(row):
+        if row.name == best_range:
+            return ['background-color: #C6EFCE'] * len(row)
+        elif row["Net Advantage"] > 0:
+            return ['background-color: #E2F0D9'] * len(row)
+        else:
+            return ['background-color: #FCE4D6'] * len(row)
+
+    st.dataframe(chart_df.style.apply(style_rows, axis=1))
