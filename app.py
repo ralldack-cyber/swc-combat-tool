@@ -76,7 +76,7 @@ st.title("⚔️ SWC Combat Optimiser")
 tab1, tab2 = st.tabs(["⚙️ Setup", "📊 Results"])
 
 # -----------------------------------
-# SETUP
+# SETUP TAB
 # -----------------------------------
 with tab1:
 
@@ -96,10 +96,12 @@ with tab1:
 
         # SETTINGS
         st.markdown("### Combat Rules")
-        secondary_weight = st.slider("Secondary weapon effectiveness",
-                                     0.0, 1.0, 0.5)
+        secondary_weight = st.slider(
+            "Secondary set effectiveness",
+            0.0, 1.0, 0.5
+        )
 
-        st.caption("Primary weapons = 100%, Secondary scaled")
+        st.caption("Secondary set is only used if better than primary")
 
         # PRESETS
         st.markdown("### Presets")
@@ -119,21 +121,23 @@ with tab1:
             st.session_state.enemy = [["","","",""] for _ in range(12)]
 
         st.markdown("### Enemy Loadout")
-        st.caption("Each unit: 2 primary + 2 secondary weapons")
+        st.caption("Each unit: 2 primary + 2 secondary")
 
         for i in range(12):
 
             st.markdown(f"**Enemy Unit {i+1}**")
 
+            # PRIMARY
             st.markdown("Primary Set")
-            p1, p2 = st.columns(2)
-            primary_1 = p1.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_1")
-            primary_2 = p2.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_2")
+            p1_col, p2_col = st.columns(2)
+            primary_1 = p1_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_1")
+            primary_2 = p2_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_2")
 
+            # SECONDARY
             st.markdown("Secondary Set")
-            s1, s2 = st.columns(2)
-            secondary_1 = s1.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_1")
-            secondary_2 = s2.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_2")
+            s1_col, s2_col = st.columns(2)
+            secondary_1 = s1_col.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_1")
+            secondary_2 = s2_col.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_2")
 
             st.session_state.enemy[i] = [
                 primary_1,
@@ -143,16 +147,14 @@ with tab1:
             ]
 
 # -----------------------------------
-# RESULTS
+# RESULTS TAB
 # -----------------------------------
 with tab2:
 
     your_total = exp_df[your_weapon] * 12
     enemy_total = pd.Series([0]*20, index=ranges)
 
-    # -----------------------------------
-    # SMART WEAPON SELECTION
-    # -----------------------------------
+    # ✅ CORRECT SET-BASED LOGIC
     for r in ranges:
 
         total = 0
@@ -162,52 +164,21 @@ with tab2:
             best_primary = 0
             best_secondary = 0
 
-            # PRIMARY (full strength)
+            # PRIMARY SET (choose best weapon)
             for w in unit[:2]:
                 if w:
                     val = exp_df.loc[r, w]
                     best_primary = max(best_primary, val)
 
-            # SECONDARY (scaled)
+            # SECONDARY SET (choose best, apply weight)
             for w in unit[2:]:
                 if w:
                     val = exp_df.loc[r, w] * secondary_weight
                     best_secondary = max(best_secondary, val)
 
-            total += best_primary + best_secondary
+            # ✅ choose the better SET (not both)
+            total += max(best_primary, best_secondary)
 
         enemy_total[r] = total
 
     net = your_total - enemy_total
-    best_range = int(net.idxmax())
-
-    # -----------------------------------
-    # OUTPUT
-    # -----------------------------------
-    st.markdown(f"# ✅ Optimal Range: **{best_range}**")
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Your Peak", round(your_total.max(),1))
-    col2.metric("Enemy Peak", round(enemy_total.max(),1))
-    col3.metric("Best Advantage", round(net.max(),1))
-
-    chart_df = pd.DataFrame({
-        "Your Damage": your_total,
-        "Enemy Damage": enemy_total,
-        "Net Advantage": net
-    })
-
-    st.line_chart(chart_df)
-
-    # -----------------------------------
-    # TABLE STYLING
-    # -----------------------------------
-    def style_rows(row):
-        if row.name == best_range:
-            return ['background-color: #C6EFCE'] * len(row)
-        elif row["Net Advantage"] > 0:
-            return ['background-color: #E2F0D9'] * len(row)
-        else:
-            return ['background-color: #FCE4D6'] * len(row)
-
-    st.dataframe(chart_df.style.apply(style_rows, axis=1))
