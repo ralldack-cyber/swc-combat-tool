@@ -94,15 +94,6 @@ with tab1:
         if "enemy" not in st.session_state:
             st.session_state.enemy = [["","","",""] for _ in range(12)]
 
-        # SETTINGS
-        st.markdown("### Combat Rules")
-        secondary_weight = st.slider(
-            "Secondary set effectiveness",
-            0.0, 1.0, 0.5
-        )
-
-        st.caption("Secondary set is only used if better than primary")
-
         # PRESETS
         st.markdown("### Presets")
         p1,p2,p3,p4 = st.columns(4)
@@ -121,19 +112,19 @@ with tab1:
             st.session_state.enemy = [["","","",""] for _ in range(12)]
 
         st.markdown("### Enemy Loadout")
-        st.caption("Each unit: 2 primary + 2 secondary")
+        st.caption("Each unit: 2 primary OR 2 secondary (both weapons fire)")
 
         for i in range(12):
 
             st.markdown(f"**Enemy Unit {i+1}**")
 
-            # PRIMARY
+            # PRIMARY SET
             st.markdown("Primary Set")
             p1_col, p2_col = st.columns(2)
             primary_1 = p1_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_1")
             primary_2 = p2_col.selectbox("", [""] + list(weapons.keys()), key=f"p{i}_2")
 
-            # SECONDARY
+            # SECONDARY SET
             st.markdown("Secondary Set")
             s1_col, s2_col = st.columns(2)
             secondary_1 = s1_col.selectbox("", [""] + list(weapons.keys()), key=f"s{i}_1")
@@ -154,31 +145,59 @@ with tab2:
     your_total = exp_df[your_weapon] * 12
     enemy_total = pd.Series([0]*20, index=ranges)
 
-    # ✅ CORRECT SET-BASED LOGIC
+    # ✅ FINAL LOADOUT LOGIC
     for r in ranges:
 
         total = 0
 
         for unit in st.session_state.enemy:
 
-            best_primary = 0
-            best_secondary = 0
+            primary_output = 0
+            secondary_output = 0
 
-            # PRIMARY SET (choose best weapon)
+            # PRIMARY SET → sum both weapons
             for w in unit[:2]:
                 if w:
-                    val = exp_df.loc[r, w]
-                    best_primary = max(best_primary, val)
+                    primary_output += exp_df.loc[r, w]
 
-            # SECONDARY SET (choose best, apply weight)
+            # SECONDARY SET → sum both weapons
             for w in unit[2:]:
                 if w:
-                    val = exp_df.loc[r, w] * secondary_weight
-                    best_secondary = max(best_secondary, val)
+                    secondary_output += exp_df.loc[r, w]
 
-            # ✅ choose the better SET (not both)
-            total += max(best_primary, best_secondary)
+            # ✅ choose best set (not mixing)
+            total += max(primary_output, secondary_output)
 
         enemy_total[r] = total
 
     net = your_total - enemy_total
+    best_range = int(net.idxmax())
+
+    # -----------------------------------
+    # OUTPUT
+    # -----------------------------------
+    st.markdown(f"# ✅ Optimal Range: **{best_range}**")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Your Peak", round(your_total.max(),1))
+    col2.metric("Enemy Peak", round(enemy_total.max(),1))
+    col3.metric("Best Advantage", round(net.max(),1))
+
+    chart_df = pd.DataFrame({
+        "Your Damage": your_total,
+        "Enemy Damage": enemy_total,
+        "Net Advantage": net
+    })
+
+    st.line_chart(chart_df)
+
+    # STYLE TABLE
+    def style_rows(row):
+        if row.name == best_range:
+            return ['background-color: #C6EFCE'] * len(row)
+        elif row["Net Advantage"] > 0:
+            return ['background-color: #E2F0D9'] * len(row)
+        else:
+            return ['background-color: #FCE4D6'] * len(row)
+
+    st.dataframe(chart_df.style.apply(style_rows, axis=1))
