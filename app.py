@@ -36,13 +36,11 @@ def curve(opt,r75l,r75h,r50l,r50h,r25l,r25h):
             vals.append(100); continue
         if r<r25l or r>r25h:
             vals.append(0); continue
-
         if r75l<=r<=r75h:
             if r<opt:
                 x1,x2,y1,y2 = r75l,opt,75,100
             else:
                 x1,x2,y1,y2 = opt,r75h,100,75
-
         elif r50l<=r<=r50h:
             if r<r75l:
                 x1,x2,y1,y2 = r50l,r75l,50,75
@@ -53,13 +51,12 @@ def curve(opt,r75l,r75h,r50l,r50h,r25l,r25h):
                 x1,x2,y1,y2 = r25l,r50l,25,50
             else:
                 x1,x2,y1,y2 = r50h,r25h,50,25
-
         val = y2 if x1==x2 else y1+(y2-y1)*(r-x1)/(x2-x1)
         vals.append(val)
     return vals
 
 # -----------------------------------
-# BUILD EXPECTED DAMAGE TABLE
+# BUILD TABLE
 # -----------------------------------
 exp_data = {}
 for w,(opt,r75l,r75h,r50l,r50h,r25l,r25h,avg) in weapons.items():
@@ -76,25 +73,22 @@ st.title("⚔️ SWC Combat Optimiser")
 tab1, tab2 = st.tabs(["⚙️ Setup", "📊 Results"])
 
 # -----------------------------------
-# SETUP TAB
+# SETUP
 # -----------------------------------
 with tab1:
 
     col1, col2 = st.columns(2)
 
-    # YOUR SQUAD
     with col1:
         st.subheader("Your Squad")
         your_weapon = st.selectbox("Weapon (12 units)", list(weapons.keys()))
 
-    # ENEMY SQUAD
     with col2:
         st.subheader("Enemy Squad Builder")
 
         if "enemy" not in st.session_state:
             st.session_state.enemy = [["","","",""] for _ in range(12)]
 
-        # PRESETS
         st.markdown("### Presets")
         p1,p2,p3,p4 = st.columns(4)
 
@@ -112,58 +106,26 @@ with tab1:
             st.session_state.enemy = [["","","",""] for _ in range(12)]
 
         st.markdown("### Enemy Loadout")
-        st.caption("Each unit uses BOTH weapons in chosen set (primary OR secondary)")
 
         for i in range(12):
 
             st.markdown(f"**Enemy Unit {i+1}**")
 
-            # -------- COPY FEATURE --------
-            copy_col1, copy_col2 = st.columns([2,3])
-
-            copy_from = copy_col1.selectbox(
-                "Copy from",
-                ["None"] + [f"Unit {j+1}" for j in range(12) if j != i],
-                key=f"copy_{i}"
-            )
-
-            if copy_col2.button("Apply Copy", key=f"copy_btn_{i}") and copy_from != "None":
-                src_index = int(copy_from.split()[1]) - 1
-                st.session_state.enemy[i] = st.session_state.enemy[src_index].copy()
-
             current = st.session_state.enemy[i]
 
             # PRIMARY
-            st.markdown("Primary Set")
             p1_col, p2_col = st.columns(2)
-
-            primary_1 = p1_col.selectbox(
-                "", [""] + list(weapons.keys()),
-                index=([""] + list(weapons.keys())).index(current[0]) if current[0] in weapons else 0,
-                key=f"p{i}_1"
-            )
-
-            primary_2 = p2_col.selectbox(
-                "", [""] + list(weapons.keys()),
-                index=([""] + list(weapons.keys())).index(current[1]) if current[1] in weapons else 0,
-                key=f"p{i}_2"
-            )
+            primary_1 = p1_col.selectbox("", [""] + list(weapons.keys()),
+                                         key=f"p{i}_1")
+            primary_2 = p2_col.selectbox("", [""] + list(weapons.keys()),
+                                         key=f"p{i}_2")
 
             # SECONDARY
-            st.markdown("Secondary Set")
             s1_col, s2_col = st.columns(2)
-
-            secondary_1 = s1_col.selectbox(
-                "", [""] + list(weapons.keys()),
-                index=([""] + list(weapons.keys())).index(current[2]) if current[2] in weapons else 0,
-                key=f"s{i}_1"
-            )
-
-            secondary_2 = s2_col.selectbox(
-                "", [""] + list(weapons.keys()),
-                index=([""] + list(weapons.keys())).index(current[3]) if current[3] in weapons else 0,
-                key=f"s{i}_2"
-            )
+            secondary_1 = s1_col.selectbox("", [""] + list(weapons.keys()),
+                                          key=f"s{i}_1")
+            secondary_2 = s2_col.selectbox("", [""] + list(weapons.keys()),
+                                          key=f"s{i}_2")
 
             st.session_state.enemy[i] = [
                 primary_1,
@@ -172,18 +134,78 @@ with tab1:
                 secondary_2
             ]
 
+    # ✅ SUBMIT BUTTON
+    if st.button("✅ Calculate Results"):
+
+        your_total = (exp_df[your_weapon] * 12).astype(float)
+        enemy_total = pd.Series([0.0]*20, index=ranges)
+
+        for r in ranges:
+
+            total = 0.0
+
+            for unit in st.session_state.enemy:
+
+                primary_output = 0.0
+                secondary_output = 0.0
+
+                for w in unit[:2]:
+                    if w:
+                        primary_output += exp_df.loc[r, w]
+
+                for w in unit[2:]:
+                    if w:
+                        secondary_output += exp_df.loc[r, w]
+
+                total += max(primary_output, secondary_output)
+
+            enemy_total[r] = total
+
+        net = your_total - enemy_total
+
+        # ✅ store results
+        st.session_state.results = {
+            "your_total": your_total,
+            "enemy_total": enemy_total,
+            "net": net
+        }
+
 # -----------------------------------
-# RESULTS TAB
+# RESULTS
 # -----------------------------------
 with tab2:
 
-    your_total = (exp_df[your_weapon] * 12).astype(float)
-    enemy_total = pd.Series([0.0]*20, index=ranges)
+    if "results" not in st.session_state:
+        st.info("Click 'Calculate Results' in the Setup tab.")
+    else:
+        your_total = st.session_state.results["your_total"]
+        enemy_total = st.session_state.results["enemy_total"]
+        net = st.session_state.results["net"]
 
-    for r in ranges:
+        best_range = int(net.idxmax())
 
-        total = 0.0
+        st.markdown(f"# ✅ Optimal Range: **{best_range}**")
 
-        for unit in st.session_state.enemy:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Your Peak", round(your_total.max(),1))
+        col2.metric("Enemy Peak", round(enemy_total.max(),1))
+        col3.metric("Best Advantage", round(net.max(),1))
 
-            primary_output = 0.0
+        chart_df = pd.DataFrame({
+            "Your Damage": your_total,
+            "Enemy Damage": enemy_total,
+            "Net Advantage": net
+        })
+
+        st.line_chart(chart_df)
+
+        def style_rows(row):
+            if row.name == best_range:
+                return ['background-color: #C6EFCE'] * len(row)
+            elif row["Net Advantage"] > 0:
+                return ['background-color: #E2F0D9'] * len(row)
+            else:
+                return ['background-color: #FCE4D6'] * len(row)
+
+        st.dataframe(chart_df.style.apply(style_rows, axis=1))
+``
