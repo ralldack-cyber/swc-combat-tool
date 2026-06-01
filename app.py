@@ -208,4 +208,4 @@ with tab2:
                 return ['background-color: #FCE4D6'] * len(row)
 
         st.dataframe(chart_df.style.apply(style_rows, axis=1))
-``
+
